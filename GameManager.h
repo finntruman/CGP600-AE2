@@ -5,6 +5,10 @@
 #include <dxerr.h>
 #include <stdio.h>
 
+#define _XM_NO_INTRINSICS_
+#define XM_NO_ALIGNMENT
+#include <xnamath.h>
+
 #include <forward_list>
 
 class GameObject;
@@ -31,6 +35,7 @@ public:
 	GameManager(HINSTANCE hInstance, int nCmdShow);
 	~GameManager();
 	void Update();
+	void RenderFrame();
 
 	GameObject* Instantiate(GameObject* obj);
 };

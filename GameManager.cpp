@@ -11,22 +11,22 @@ int (WINAPIV * __vsnprintf_s)(char *, size_t, const char*, va_list) = _vsnprintf
 ////////////////////////////
 // GLOBAL VARS
 ////////////////////////////
-char		g_programName[100] = "Finn Truman CGP600 AE2";
-HINSTANCE	g_hInst = NULL;
-HWND		g_hWnd = NULL;
-D3D_DRIVER_TYPE         g_driverType = D3D_DRIVER_TYPE_NULL;
-D3D_FEATURE_LEVEL       g_featureLevel = D3D_FEATURE_LEVEL_11_0;
-ID3D11Device*           g_pD3DDevice = NULL;
+char		g_programName[100]	= "Finn Truman CGP600 AE2";
+HINSTANCE	g_hInst				= NULL;
+HWND		g_hWnd				= NULL;
+D3D_DRIVER_TYPE         g_driverType		= D3D_DRIVER_TYPE_NULL;
+D3D_FEATURE_LEVEL       g_featureLevel		= D3D_FEATURE_LEVEL_11_0;
+ID3D11Device*           g_pD3DDevice		= NULL;
 ID3D11DeviceContext*    g_pImmediateContext = NULL;
-IDXGISwapChain*         g_pSwapChain = NULL;
+IDXGISwapChain*         g_pSwapChain		= NULL;
 ID3D11RenderTargetView* g_pBackBufferRTView = NULL;
-ID3D11Buffer*			g_pVertexBuffer = NULL;
-ID3D11VertexShader*		g_pVertexShader = NULL;
-ID3D11PixelShader*		g_pPixelShader = NULL;
-ID3D11InputLayout*		g_pInputLayout = NULL;
-ID3D11Buffer*			g_pConstantBuffer0 = NULL;
-ID3D11Buffer*			g_pConstantBuffer1 = NULL;
-ID3D11DepthStencilView* g_pZBuffer = NULL;
+ID3D11Buffer*			g_pVertexBuffer		= NULL;
+ID3D11VertexShader*		g_pVertexShader		= NULL;
+ID3D11PixelShader*		g_pPixelShader		= NULL;
+ID3D11InputLayout*		g_pInputLayout		= NULL;
+ID3D11Buffer*			g_pConstantBuffer0	= NULL;
+//ID3D11Buffer*			g_pConstantBuffer1	= NULL;
+ID3D11DepthStencilView* g_pZBuffer			= NULL;
 
 GameManager::GameManager(HINSTANCE hInstance, int nCmdShow)
 {
@@ -38,12 +38,16 @@ GameManager::GameManager(HINSTANCE hInstance, int nCmdShow)
 	}
 
 	DirectXSetup(hInstance, nCmdShow);
+
+	Instantiate(new GameObject());
 }
 
 GameManager::~GameManager()
 {
 	ShutdownD3D();
 }
+
+
 
 ////////////////////////////
 // 
@@ -56,6 +60,68 @@ void GameManager::Update()
 		delete m_destructionList.front();
 		m_destructionList.pop_front();
 	}
+
+	RenderFrame();
+}
+
+void GameManager::RenderFrame()
+{
+	// Clear the back buffer - choose a colour you like
+	float rgba_clear_colour[4] = { 0.1f, 0.2f, 0.6f, 1.0f };
+	g_pImmediateContext->ClearRenderTargetView(g_pBackBufferRTView, rgba_clear_colour);
+	g_pImmediateContext->ClearDepthStencilView(g_pZBuffer, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0); //clear the z buffer
+
+	//Set the vertex buffer //03-01
+	UINT stride = sizeof(VERTEX_BUFFER);
+	UINT offset = 0;
+	g_pImmediateContext->IASetVertexBuffers(0, 1, &g_pVertexBuffer, &stride, &offset);
+
+	//Select which primitive type to use //03-01
+	g_pImmediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	//update the constant buffer
+	//CONSTANT_BUFFER1 cb0_values;
+	//cb0_values.RedAmount = 0.5f;	//50% of vertex red value
+	//cb0_values.Scaling = 1.0f;
+
+
+	// PROJECTION AND VIEW MATRIX
+	XMMATRIX projection; // Projection matrix used to project objects to screen, removing objects that aren't visible and scaling them based on distance
+	XMMATRIX view; // View matrix used to move the viewpoint around
+	XMMATRIX worldviewprojection;
+
+	projection = XMMatrixPerspectiveFovLH(XMConvertToRadians(45.0f), 640.0f / 480.0f, 1.0f, 100.0f);
+	view = XMMatrixIdentity();
+	//worldviewprojection = world * view * projection;
+
+	// iterate through all the objects in the scene to get their world matrices
+	// lambda expression takes a copy of 'view' and 'projection', while taking 'worldviewprojection' by reference. Gets a pointer to the GameObject currently iterating and gets its world matrix
+	std::for_each(m_instanceList.begin(), m_instanceList.end(), [&worldviewprojection, view, projection](GameObject* inst)
+	{
+		worldviewprojection = inst->GetWorld() * view * projection;
+		g_pImmediateContext->UpdateSubresource(g_pConstantBuffer0, 0, 0, 0, 0, 0); //upload the new values for the constant buffer
+	});
+
+	//cb0_values.Projection = world * view * projection;
+
+	//upload the new values for the constant buffer
+	//g_pImmediateContext->UpdateSubresource(g_pConstantBuffer0, 0, 0, &cb0_values, 0, 0);
+	//g_pImmediateContext->UpdateSubresource(g_pConstantBuffer0, 0, 0, 0, 0, 0);
+
+	//activate the const buffer
+	g_pImmediateContext->VSSetConstantBuffers(0, 1, &g_pConstantBuffer0);
+
+	//Draw the vertex buffer to the back buffer //03-01
+	g_pImmediateContext->Draw(72, 0);
+
+	// Display what has just been rendered
+	g_pSwapChain->Present(0, 0);
+}
+
+GameObject* GameManager::Instantiate(GameObject* obj)
+{
+	m_instanceList.push_front(obj);
+	return obj;
 }
 
 
@@ -79,7 +145,7 @@ int GameManager::DirectXSetup(HINSTANCE hInstance, int nCmdShow)
 	}
 }
 
-HRESULT CALLBACK GameManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+LRESULT CALLBACK GameManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	PAINTSTRUCT ps;
 	HDC hdc;
@@ -266,7 +332,7 @@ HRESULT GameManager::InitialiseGraphics()
 	D3D11_BUFFER_DESC bufferDesc;
 	ZeroMemory(&bufferDesc, sizeof(bufferDesc));
 	bufferDesc.Usage = D3D11_USAGE_DYNAMIC;		//Used by CPU and GPU
-	bufferDesc.ByteWidth = sizeof(vertices1);	//Total size of buffer
+	bufferDesc.ByteWidth = sizeof(300);	//Total size of buffer
 	bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;	//Use as a vertex buffer
 	bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;	//Allow CPU access
 	hr = g_pD3DDevice->CreateBuffer(&bufferDesc, NULL, &g_pVertexBuffer); //Create the buffer
@@ -365,7 +431,7 @@ HRESULT GameManager::InitialiseGraphics()
 void GameManager::ShutdownD3D()
 {
 	if (g_pD3DDevice) g_pD3DDevice->Release();
-	if (g_pConstantBuffer1) g_pConstantBuffer1->Release();
+	//if (g_pConstantBuffer1) g_pConstantBuffer1->Release();
 	if (g_pConstantBuffer0) g_pConstantBuffer0->Release();
 	if (g_pVertexBuffer) g_pVertexBuffer->Release();
 	if (g_pInputLayout) g_pInputLayout->Release();
